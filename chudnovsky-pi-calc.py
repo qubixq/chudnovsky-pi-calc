@@ -4,13 +4,41 @@ import psutil
 import time
 import platform
 import subprocess
-import sys
 import os
 
 def max_digits_from_ram(ratio):
     total_ram = psutil.virtual_memory().total
     usable_ram = total_ram * ratio
-    return total_ram, int(usable_ram // 4)
+    max_digits = int(usable_ram // 4)  # Approx 4 bytes per digit
+    return total_ram, max_digits
+
+def get_max_digits_by_cpu():
+    # Placeholder for CPU-based max digit limit; set high for now
+    return 10**7
+
+def ask_user_for_digits(max_digits):
+    while True:
+        val = input(f"Enter number of digits to calculate (max {max_digits}): ").strip()
+        if val == '':
+            return max_digits
+        try:
+            num = int(val)
+            if 1 <= num <= max_digits:
+                return num
+            print(f"Please enter a number between 1 and {max_digits}.")
+        except:
+            print("Invalid input, please enter a valid integer.")
+
+def open_with_default_editor(filepath):
+    try:
+        if platform.system() == "Windows":
+            os.startfile(filepath)
+        elif platform.system() == "Darwin":
+            subprocess.run(["open", filepath])
+        else:
+            subprocess.run(["xdg-open", filepath])
+    except Exception as e:
+        print(f"Failed to open file: {e}")
 
 def measure_cpu_speed(sample_size=500):
     getcontext().prec = sample_size + 5
@@ -30,27 +58,25 @@ def measure_cpu_speed(sample_size=500):
     elapsed = time.time() - start
     return sample_size / elapsed
 
-def open_with_default_editor(filepath):
-    try:
-        if platform.system() == "Windows":
-            os.startfile(filepath)
-        elif platform.system() == "Darwin":
-            subprocess.run(["open", filepath])
-        else:
-            subprocess.run(["xdg-open", filepath])
-    except Exception as e:
-        print(f"Failed to open the file automatically: {e}")
+def chudnovsky_pi_live_optimized(ratio=0.1, digits=None, delay=0.1, block_size=10, live_preview=True):
+    total_ram, max_digits_by_ram = max_digits_from_ram(ratio)
+    max_digits_by_cpu = get_max_digits_by_cpu()
+    max_digits_possible = min(max_digits_by_ram, max_digits_by_cpu)
 
-def chudnovsky_pi_live_optimized(ratio=0.1, delay=0.1, block_size=10, max_limit=20000, live_preview=True):
-    total_ram, digits = max_digits_from_ram(ratio)
-    digits = min(digits, max_limit)
+    if digits is None:
+        digits = ask_user_for_digits(max_digits_possible)
+    else:
+        if digits > max_digits_possible:
+            print(f"Requested digits ({digits}) exceed max allowed ({max_digits_possible}), reducing.")
+            digits = max_digits_possible
+
     speed = measure_cpu_speed()
     est_cpu_time = digits / speed
     est_total_time = est_cpu_time + digits * delay
 
     print(f"Total RAM detected: {total_ram / (1024**3):.2f} GB")
     print(f"RAM usage ratio: {ratio*100:.1f}%")
-    print(f"Calculated digits (limited by max {max_limit}): {digits}")
+    print(f"Digits to calculate: {digits}")
     print(f"CPU speed estimate: {speed:.2f} iterations/sec")
     print(f"Estimated CPU-only runtime: {est_cpu_time/60:.2f} minutes")
     print(f"Estimated total runtime with delay: {est_total_time/60:.2f} minutes\n")
@@ -69,11 +95,7 @@ def chudnovsky_pi_live_optimized(ratio=0.1, delay=0.1, block_size=10, max_limit=
         print(pi_str, end="", flush=True)
 
     start_time = time.time()
-    cpu_freqs = []
-    cpu_percentages = []
-    mem_usages = []
-
-    pi_full_str = str(C / S)
+    cpu_freqs, cpu_percentages, mem_usages = [], [], []
 
     for i in range(1, digits):
         M = (M * (K ** 3 - 16 * K)) // (i ** 3)
@@ -82,10 +104,8 @@ def chudnovsky_pi_live_optimized(ratio=0.1, delay=0.1, block_size=10, max_limit=
         S += Decimal(M * L) / X
         K += 12
 
-        if i % (block_size * 10) == 0 or i == digits - 1:
+        if i % block_size == 0 or i == digits - 1:
             pi_full_str = str(C / S)
-
-        if i % block_size == 0:
             new_digits = pi_full_str[len(pi_str):len(pi_str)+block_size]
             pi_str += new_digits
             if live_preview:
@@ -117,7 +137,7 @@ def chudnovsky_pi_live_optimized(ratio=0.1, delay=0.1, block_size=10, max_limit=
     print(f"Average CPU utilization: {avg_cpu_percent:.2f} %")
     print(f"Average RAM usage during calculation: {avg_mem_usage:.2f} GB")
     print(f"System: {platform.system()} {platform.release()}")
-    print("\nNote: Power consumption measurement is not supported in this script.")
+    print("\nNote: Power consumption measurement is not supported.")
 
     save_choice = input("\nSave result to a file? (y/n): ").strip().lower()
     if save_choice == 'y':
@@ -130,7 +150,7 @@ def chudnovsky_pi_live_optimized(ratio=0.1, delay=0.1, block_size=10, max_limit=
             f.write(f"Average CPU utilization: {avg_cpu_percent:.2f} %\n")
             f.write(f"Average RAM usage during calculation: {avg_mem_usage:.2f} GB\n")
             f.write(f"System: {platform.system()} {platform.release()}\n")
-            f.write("Note: Power consumption measurement is not supported in this script.\n")
+            f.write("Note: Power consumption measurement is not supported.\n")
         print(f"Result saved to {filename}")
 
         open_choice = input("Open the file with default text editor? (y/n): ").strip().lower()
